@@ -238,8 +238,7 @@ else:
     dados = get_dados(selecionadas)
     info_ativos = get_metricas(dados)
     with st.form(key='meu_formulario'):
-        ret_alvo = st.text_input("Retorno Alvo: (0<r<1)")
-        ret_alvo = float(ret_alvo)
+        ret_alvo = st.number_input("Retorno Alvo (entre 0 e 1):", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.4f")
         submit_button = st.form_submit_button(label='Rodar')
         
     st.markdown("---")
