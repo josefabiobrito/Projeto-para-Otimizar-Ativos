@@ -1,6 +1,7 @@
 import yfinance as yf
 import streamlit as st
 import pandas as pd
+import lxml
 import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
@@ -8,7 +9,16 @@ import numpy as np
 import seaborn as sns
 from datetime import datetime, timedelta
 import requests
-
+import pandas as pd
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+pd.set_option("display.min_rows",50)
 #================================================
 # FUNÇÕES DE OBTENÇÃO E OTIMIZAÇÃO DO PORTFÓLIO
 #================================================
@@ -204,75 +214,160 @@ def plot_correlacao(df_correlacao, ax=None):
 #===================================================================
 #   DASHBOARD INTERATIVO PARA ESCOLHA E RESULTADO DO PORTFÓLIO
 #===================================================================
-ibrx50_tickers = [
-    'ABEV3', 'ASAI3', 'AZUL4', 'B3SA3', 'BBAS3', 'BBDC3', 'BBDC4', 'BBSE3',
-    'BPAC11', 'BRAV3', 'BRFS3', 'CMIG4', 'COGN3', 'CPLE6', 'CRFB3', 'CSAN3',
-    'CSNA3', 'CYRE3', 'ELET3', 'ELET6', 'EMBR3', 'ENEV3', 'ENGI11', 'EQTL3',
-    'GGBR4', 'HAPV3', 'HYPE3', 'ITSA4', 'ITUB4', 'JBSS3', 'KLBN11', 'LREN3',
-    'MGLU3', 'MRFG3', 'MULT3', 'NTCO3', 'PETR3', 'PETR4', 'PRIO3', 'RADL3',
-    'RAIL3', 'RDOR3', 'RENT3', 'SBSP3', 'SUZB3', 'TIMS3', 'TOTS3', 'UGPA3',
-    'VALE3', 'VIVT3', 'WEGE3'
-]
+@st.cache_data
+def indice_tickers():
+    url = "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
+    
+    options = webdriver.ChromeOptions()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
 
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+    
+    try:
+        driver.get(url)
+        
+        wait = WebDriverWait(driver, 10) 
+        
+        elemento_dropdown = wait.until(
+            EC.visibility_of_element_located((By.ID, "selectPage"))
+        )
+        
+        select = Select(elemento_dropdown)
+        select.select_by_visible_text("60")
 
-st.set_page_config(
-    page_title="Dashboard de montagem de portfólio",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+        time.sleep(5) 
 
-st.title("📊 Portfólio de investimento otimizado")
-st.markdown("---")
+        html_da_pagina = driver.page_source
+        
+        tabela_ibov = pd.read_html(html_da_pagina)[0][:-2]
+        tickers_lista = list(tabela_ibov['Código'])
+        nome_acoes = list(tabela_ibov['Ação'])
+        return tickers_lista, nome_acoes
+        
+    except (ValueError, KeyError):
+        return [], []
+    except Exception as e:
+        return [], []
+    finally:
+        driver.quit()
+       
+ibv_50, nome_ibv_50 = indice_tickers()
+print(ibv_50)
+print(nome_ibv_50)
 
-with st.container(horizontal=True, horizontal_alignment="center"):
-    selecionadas = st.pills(
-        "Selecione os ativos:",
-        options=ibrx50_tickers,
-        selection_mode="multi"
+def Info():
+    st.set_page_config(
+        page_title="Informações",
+        page_icon="❓",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    st.title(" ❓ Informações")
+    st.markdown("---")
+    
+    st.markdown(" #### Empresas listadas")
+    tabela_info = pd.DataFrame({'Tickers': ibv_50, "Ações": nome_ibv_50})
+    st.dataframe(tabela_info, hide_index = True)
+    with st.container():
+        st.markdown("""
+        ## Otimizadores:
+        Este painel utiliza dois métodos de otimização de portfólio baseado na Teoria Moderna do Portfólio (Markowitz). 
+        O objetivo principal do primeiro método é construir a carteira de Mínima Variância (menor risco) para um nível de retorno-alvo que você define.
+        Enquanto que para o segundo método, o objetivo é ...
+
+        ### Método 1: Uma Abordagem Híbrida
+        O algoritmo opera em duas etapas para encontrar a melhor alocação de ativos:
+
+        **1. A Solução Analítica (Lagrange)**
+        
+        Primeiro, o otimizador tenta encontrar a solução "matematicamente perfeita" usando um método clássico (Multiplicadores de Lagrange). Esta solução calcula a alocação de ativos que minimiza o risco para o seu retorno-alvo em um mundo ideal.
+
+        **2. A Verificação de Realidade e Otimização Numérica**
+
+        * **O Problema:** A solução "perfeita" muitas vezes inclui alocações irreais para um investidor comum (venda a descoberto com pesos negativos ou alavancagem com pesos > 100%).
+        * **A Solução:** O código verifica se isso aconteceu. Se a solução matemática for irreal, ela é descartada.
+        * **O Plano B (Gradient Descent):** O algoritmo ativa um otimizador numérico. Este método:
+            * Começa com uma carteira simples (ex: pesos iguais).
+            * Itera milhares de vezes, fazendo pequenos ajustes para minimizar o risco e, ao mesmo tempo, atingir o retorno-alvo.
+            * Crucialmente, ele força que todos os pesos se mantenham entre 0% e 100% e que a soma total seja 100%.
+        
+        ### Método 2: 
+
+        ---
+        **O Resultado Final:** Você vê a carteira com o menor risco (volatilidade) possível para o retorno desejado, respeitando as restrições do mundo real (sem vender a descoberto).
+        """)
+    
+
+def Home():
+    st.set_page_config(
+        page_title="Dashboard de montagem de portfólio",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
 
-if not selecionadas:
-    st.info("Por favor, selecione um ou mais ativos acima para carregar os dados.")
-else:
-    dados = get_dados(selecionadas)
-    info_ativos = get_metricas(dados)
-    with st.form(key='meu_formulario'):
-        ret_alvo = st.number_input("Retorno Alvo (entre 0 e 1):", min_value=0.0, max_value=1.0, value=0.1, step=0.01, format="%.3f")
-        submit_button = st.form_submit_button(label='Rodar')
-        
+    st.title("📊 Portfólio de investimento otimizado")
     st.markdown("---")
 
-    if submit_button:
-        col1, col2= st.columns(2)
-        with col1:
-            ax = graficoAcoes(dados)
-            st.pyplot(ax.get_figure())
-        with col2:
-            ax2 = graficoVolatilidade(info_ativos)
-            st.pyplot(ax2.get_figure())
+    with st.container(horizontal=True, horizontal_alignment="center"):
+        selecionadas = st.pills(
+            "Selecione os ativos:",
+            options=ibv_50,
+            selection_mode="multi"
+        )
+
+    if not selecionadas:
+        st.info("Por favor, selecione um ou mais ativos acima para carregar os dados.")
+    else:
+        dados = get_dados(selecionadas)
+        info_ativos = get_metricas(dados)
+        with st.form(key='meu_formulario'):
+            col1,col2 = st.columns(2)
+            with col1:
+                ret_alvo = st.number_input("Retorno Alvo (entre 0 e 1):", min_value=0.0, max_value=1.0, value=0.10, step=0.01, format="%.3f")
+            with col2:
+                capital = st.number_input("Qual valor deseja investir? (Ex: 1000.00)", min_value = 0.0)
+            submit_button = st.form_submit_button(label='Rodar')
             
+        st.markdown("---")
+
+        if submit_button:
+            col1, col2= st.columns(2)
+            with col1:
+                ax = graficoAcoes(dados)
+                st.pyplot(ax.get_figure())
+            with col2:
+                ax2 = graficoVolatilidade(info_ativos)
+                st.pyplot(ax2.get_figure())
+                
+                
+            col3,col4 = st.columns(2)
+            with col3:
+                ax3 = graficoRAcumulado(info_ativos)
+                st.pyplot(ax3.get_figure())
+            with col4:
+                ax4 = graficoRetorno(info_ativos)
+                st.pyplot(ax4.get_figure())
             
-        col3,col4 = st.columns(2)
-        with col3:
-            ax3 = graficoRAcumulado(info_ativos)
-            st.pyplot(ax3.get_figure())
-        with col4:
-            ax4 = graficoRetorno(info_ativos)
-            st.pyplot(ax4.get_figure())
-        
-        with st.container(border = True):
-            st.write("Método de minimização do risco:")
-            pesos,retorno,risco,sharpe = otimizacao(info_ativos,ret_alvo)
-            dict_pesos = {'Ativos': selecionadas, 'Pesos': pesos}
-            col1,col2,col3 = st.columns(3)
-            col1.metric(label = "Retorno",
-                        value = f'{retorno:.3f}',
-                        border = True)
-            col2.metric(label = 'Risco',
-                        value = f'{risco:.3f}',
-                        border = True)
-            col3.metric(label = "Sharpe ratio",
-                        value = f'{sharpe:.3f}',
-                        border = True)
-            st.dataframe(dict_pesos)
+            with st.container(border = True):
+                st.write("Método de minimização do risco:")
+                pesos,retorno,risco,sharpe = otimizacao(info_ativos,ret_alvo)
+                dict_pesos = {'Ativos': selecionadas, 'Pesos': pesos}
+                col1,col2,col3 = st.columns(3)
+                col1.metric(label = "Retorno",
+                            value = f'{retorno:.3f}',
+                            border = True)
+                col2.metric(label = 'Risco',
+                            value = f'{risco:.3f}',
+                            border = True)
+                col3.metric(label = "Sharpe ratio",
+                            value = f'{sharpe:.3f}',
+                            border = True)
+                st.dataframe(dict_pesos)
+                
+pg = st.navigation([Home,Info], position = 'top')
+pg.run()
