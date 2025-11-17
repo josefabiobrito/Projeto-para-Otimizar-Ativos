@@ -356,7 +356,8 @@ def Home():
             with st.container(border = True):
                 st.write("Método de minimização do risco:")
                 pesos,retorno,risco,sharpe = otimizacao(info_ativos,ret_alvo)
-                dict_pesos = {'Ativos': selecionadas, 'Pesos': pesos}
+                investimento = pesos*capital
+                dict_pesos = {'Ativos': selecionadas, 'Pesos': pesos, 'Investimento (R$)': investimento}
                 col1,col2,col3 = st.columns(3)
                 col1.metric(label = "Retorno",
                             value = f'{retorno:.3f}',
