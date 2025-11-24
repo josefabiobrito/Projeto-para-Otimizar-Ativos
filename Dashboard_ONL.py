@@ -12,21 +12,26 @@ import requests
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 import time
 pd.set_option("display.min_rows",50)
 
 def get_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  
+    chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox") 
-    chrome_options.add_argument("--disable-dev-shm-usage")    
-    driver = webdriver.Chrome(options=chrome_options)
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    chrome_options.add_argument("--window-size=1920,1080")
+    
+    service = Service(executable_path='/usr/bin/chromedriver')
+    
+    driver = webdriver.Chrome(service=service, options=chrome_options)
     return driver
 
 
@@ -230,12 +235,6 @@ def plot_correlacao(df_correlacao, ax=None):
 def indice_tickers():
     url = "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
     
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-
-    service = Service(ChromeDriverManager().install())
     driver = get_driver()
     
     try:
