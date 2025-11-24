@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import requests
 import pandas as pd
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
@@ -19,6 +20,17 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 pd.set_option("display.min_rows",50)
+
+def get_driver():
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  
+    chrome_options.add_argument("--no-sandbox") 
+    chrome_options.add_argument("--disable-dev-shm-usage")    
+    driver = webdriver.Chrome(options=chrome_options)
+    return driver
+
+
+
 #================================================
 # FUNÇÕES DE OBTENÇÃO E OTIMIZAÇÃO DO PORTFÓLIO
 #================================================
@@ -224,7 +236,7 @@ def indice_tickers():
     options.add_argument('--disable-dev-shm-usage')
 
     service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = get_driver()
     
     try:
         driver.get(url)
