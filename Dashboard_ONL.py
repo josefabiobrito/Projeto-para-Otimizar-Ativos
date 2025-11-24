@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 import requests
 import pandas as pd
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
@@ -18,6 +20,19 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 import time
 pd.set_option("display.min_rows",50)
+
+def get_driver():
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080")
+    
+    service = Service(executable_path='/usr/bin/chromedriver')
+    
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    return driver
+
 #================================================
 # FUNÇÕES DE OBTENÇÃO E OTIMIZAÇÃO DO PORTFÓLIO
 #================================================
@@ -216,14 +231,7 @@ def plot_correlacao(df_correlacao, ax=None):
 @st.cache_data
 def indice_tickers():
     url = "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
-    
-    options = webdriver.ChromeOptions()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = get_driver()
     
     try:
         driver.get(url)
@@ -329,7 +337,7 @@ def Home():
             with col1:
                 ret_alvo = st.number_input("Retorno Alvo (entre 0 e 1):", min_value=0.0, max_value=1.0, value=0.10, step=0.01, format="%.3f")
             with col2:
-                capital = st.number_input("Qual valor deseja investir? (Ex: 1000.00)", min_value = 0.0)
+                capital = st.number_input("Qual valor deseja investir? (Ex: 1000.00)", min_value = 0.0, step = 100.00)
             submit_button = st.form_submit_button(label='Rodar')
             
         st.markdown("---")
