@@ -19,6 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 import time
+import platform
 pd.set_option("display.min_rows",50)
 
 def get_driver():
@@ -27,8 +28,10 @@ def get_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    
-    service = Service(executable_path='/usr/bin/chromedriver')
+    if platform.system() == "Linux":
+        service = Service(executable_path='/usr/bin/chromedriver')
+    else:
+        service = Service()
     
     driver = webdriver.Chrome(service=service, options=chrome_options)
     return driver
@@ -61,88 +64,75 @@ def get_metricas(dados_acoes):
   return metricas
 
 #OTIMIZAÇÃO UTILIZANDO MÉTODO DO LAGRANGIANO E GRADIENTE DESCENTE
-def otimizacao(metricas, r_alvo):
+def otimizacao_sharpe_manual(metricas):
+   
     taxa_livre_risco = obter_selic_atual()
     covariancia = metricas['covariancia']
     retorno_medio = metricas['retorno_medio']
     n_ativos = len(retorno_medio)
-
+    
     try:
         cov_inv = np.linalg.inv(covariancia)
     except np.linalg.LinAlgError:
         cov_inv = np.linalg.pinv(covariancia)
+        
+    excesso_retorno = retorno_medio - taxa_livre_risco
+    pesos_analiticos = cov_inv @ excesso_retorno
+    
+    if np.sum(pesos_analiticos) != 0:
+        pesos_analiticos /= np.sum(pesos_analiticos) 
+    
+    if np.all(pesos_analiticos >= -1e-6) and np.all(pesos_analiticos <= 1 + 1e-6):
+        retorno = pesos_analiticos @ retorno_medio
+        risco = np.sqrt(pesos_analiticos @ covariancia @ pesos_analiticos)
+        sharpe = (retorno - taxa_livre_risco) / risco
+        return pesos_analiticos, retorno, risco, sharpe
 
-    vetor_uns = np.ones_like(retorno_medio)
+    pesos = np.ones(n_ativos) / n_ativos
+    
+    taxa_aprendizado = 0.35  
+    max_iter = 5000
+    tolerancia = 1e-6
+    sharpe_anterior = -np.inf
 
-    A = retorno_medio.T @ cov_inv @ retorno_medio
-    B = retorno_medio.T @ cov_inv @ vetor_uns
-    C = vetor_uns.T @ cov_inv @ vetor_uns
-    D = A * C - B * B
+    for i in range(max_iter):
+        ret_port = pesos @ retorno_medio
+        var_port = pesos @ covariancia @ pesos
+        vol_port = np.sqrt(var_port)
+        
+        if vol_port < tolerancia: break
+            
+        sharpe_atual = (ret_port - taxa_livre_risco) / vol_port
+        
+        delta_sharpe = sharpe_atual - sharpe_anterior
+        
+        if abs(delta_sharpe) < tolerancia and i > 100:
+            break
+        sharpe_anterior = sharpe_atual
+        
+        grad_numerador = retorno_medio
+        grad_denominador = (covariancia @ pesos) / vol_port 
+        
+        gradiente = (grad_numerador * vol_port - (ret_port - taxa_livre_risco) * grad_denominador) / (var_port)
 
-    if D <= 0:
-        raise ValueError(f"Discriminante D={D:.6f} não é positivo!")
+        pesos_novos = pesos + taxa_aprendizado * gradiente
 
-    ret_min = retorno_medio.min()
-    ret_max = retorno_medio.max()
-
-    if r_alvo < ret_min:
-        r_alvo = ret_min
-    elif r_alvo > ret_max:
-        r_alvo = ret_max
-
-    l1 = (C * r_alvo - B) / D
-    l2 = (A - B * r_alvo) / D
-
-    pesos_lagrange = cov_inv @ (l1 * retorno_medio + l2 * vetor_uns)
-
-    tem_negativos = np.any(pesos_lagrange < 0)
-    tem_maiores_que_1 = np.any(pesos_lagrange > 1)
-
-    if tem_negativos or tem_maiores_que_1:
-
-        pesos = np.array([1/n_ativos] * n_ativos)
-        taxa_aprendizado = 0.1
-        max_iter = 10000
-
-        for iteracao in range(max_iter):
-            pesos = np.clip(pesos, 0, 1)
-            soma = np.sum(pesos)
-            if soma > 0:
-                pesos = pesos / soma
-
-            ret_atual = pesos @ retorno_medio
-            vol_atual = np.sqrt(pesos @ covariancia @ pesos)
-
-            grad_risco = (covariancia @ pesos) / vol_atual if vol_atual > 1e-10 else covariancia @ pesos
-
-            erro_retorno = ret_atual - r_alvo
-            penalidade_retorno = 1000.0
-            grad_retorno = penalidade_retorno * erro_retorno * retorno_medio
-
-            gradiente_total = grad_risco + grad_retorno
-
-            pesos_novo = pesos - taxa_aprendizado * gradiente_total
-
-            ret_novo = np.clip(pesos_novo, 0, 1)
-            ret_novo = ret_novo / np.sum(ret_novo) if np.sum(ret_novo) > 0 else pesos
-            ret_novo_val = ret_novo @ retorno_medio
-
-            if abs(ret_novo_val - r_alvo) < abs(ret_atual - r_alvo):
-                pesos = ret_novo
-
-
-
-            if abs(erro_retorno) < 0.0001 and iteracao > 1000:
-                break
-
-        pesos = np.clip(pesos, 0, 1)
-        pesos = pesos / np.sum(pesos)
-    else:
-        pesos = pesos_lagrange
+        pesos_novos = np.clip(pesos_novos, 0.01, 0.99)
+        
+        soma = np.sum(pesos_novos)
+        if soma > 0:
+            pesos_novos /= soma
+        else:
+            pesos_novos = np.ones(n_ativos) / n_ativos
+            
+        pesos = pesos_novos
+        
+        if i % 50 == 0:
+            taxa_aprendizado *= 0.95
 
     retorno = pesos @ retorno_medio
     risco = np.sqrt(pesos @ covariancia @ pesos)
-    sharpe = (retorno - taxa_livre_risco) / (risco) if risco > 1e-10 else 0.0
+    sharpe = (retorno - taxa_livre_risco) / risco
 
     return pesos, retorno, risco, sharpe
 
@@ -283,29 +273,30 @@ def Info():
         st.markdown("""
         ## Otimizadores:
         Este painel utiliza dois métodos de otimização de portfólio baseado na Teoria Moderna do Portfólio (Markowitz). 
-        O objetivo principal do primeiro método é construir a carteira de Mínima Variância (menor risco) para um nível de retorno-alvo que você define.
-        Enquanto que para o segundo método, o objetivo é ...
+        O objetivo principal do primeiro método é construir a carteira de Mínima Variância (menor risco) através da maximização do índice de Sharpe.
 
-        ### Método 1: Uma Abordagem Híbrida
-        O algoritmo opera em duas etapas para encontrar a melhor alocação de ativos:
-
-        **1. A Solução Analítica (Lagrange)**
+        ### Método 1:
+        #### A Solução Analítica (Portfólio de Tangência)
         
-        Primeiro, o otimizador tenta encontrar a solução "matematicamente perfeita" usando um método clássico (Multiplicadores de Lagrange). Esta solução calcula a alocação de ativos que minimiza o risco para o seu retorno-alvo em um mundo ideal.
+        Primeiro, o otimizador tenta encontrar a solução "matematicamente fechada" através de álgebra linear. 
+        Ele calcula o ponto exato de tangência da fronteira eficiente (fórmula de Markowitz inversa), 
+        buscando o máximo Sharpe teórico instantaneamente, sem necessidade de iterações.
 
-        **2. A Verificação de Realidade e Otimização Numérica**
+        #### A Verificação de Restrições e Otimização Numérica
 
-        * **O Problema:** A solução "perfeita" muitas vezes inclui alocações irreais para um investidor comum (venda a descoberto com pesos negativos ou alavancagem com pesos > 100%).
-        * **A Solução:** O código verifica se isso aconteceu. Se a solução matemática for irreal, ela é descartada.
-        * **O Plano B (Gradient Descent):** O algoritmo ativa um otimizador numérico. Este método:
-            * Começa com uma carteira simples (ex: pesos iguais).
-            * Itera milhares de vezes, fazendo pequenos ajustes para minimizar o risco e, ao mesmo tempo, atingir o retorno-alvo.
-            * Crucialmente, ele força que todos os pesos se mantenham entre 0% e 100% e que a soma total seja 100%.
-        
+        * O Problema: A solução matemática direta frequentemente viola as regras de um fundo comum (sugerindo pesos negativos/venda a descoberto ou alavancagem acima de 100%).
+        * A Validação: O código verifica se os pesos analíticos são viáveis. Se violarem as regras, essa solução é descartada.
+        * O Plano B (Projected Gradient Ascent): O algoritmo ativa um otimizador numérico de Subida de Gradiente Projetado. Este método:
+            * Inicializa com uma carteira equiponderada e calcula a derivada do Índice de Sharpe para determinar a direção de subida.
+            * Aplica um Decaimento de Taxa de Aprendizado (*Decay*), reduzindo o tamanho dos passos ao longo do tempo para garantir um ajuste fino e evitar oscilações no topo.
+            * Executa uma Projeção no Simplex a cada passo, forçando matematicamente que os pesos negativos sejam zerados e que a soma total retorne a 100%.
+            * Define a convergência pela estabilização da Função Objetivo (Sharpe) e não apenas dos pesos, garantindo robustez no resultado final.
         ### Método 2: 
 
         ---
-        **O Resultado Final:** Você vê a carteira com o menor risco (volatilidade) possível para o retorno desejado, respeitando as restrições do mundo real (sem vender a descoberto).
+        ## **O Resultado Final**: 
+        Ao final, o otimizador retorna os pesos finais dos ativos, o retorno esperado, o risco (desvio padrão) e o índice de Sharpe da carteira otimizada. 
+        Esses valores são exibidos no painel, permitindo ao usuário visualizar a alocação ideal para seu portfólio com base nos ativos selecionados.
         """)
     
 
@@ -333,11 +324,7 @@ def Home():
         dados = get_dados(selecionadas)
         info_ativos = get_metricas(dados)
         with st.form(key='meu_formulario'):
-            col1,col2 = st.columns(2)
-            with col1:
-                ret_alvo = st.number_input("Retorno Alvo (entre 0 e 1):", min_value=0.0, max_value=1.0, value=0.10, step=0.01, format="%.3f")
-            with col2:
-                capital = st.number_input("Qual valor deseja investir? (Ex: 1000.00)", min_value = 0.0, step = 100.00)
+            capital = st.number_input("Qual valor deseja investir? (Ex: 1000.00)", min_value = 0.0, step = 100.00)
             submit_button = st.form_submit_button(label='Rodar')
             
         st.markdown("---")
@@ -362,7 +349,7 @@ def Home():
             
             with st.container(border = True):
                 st.write("Método de minimização do risco:")
-                pesos,retorno,risco,sharpe = otimizacao(info_ativos,ret_alvo)
+                pesos,retorno,risco,sharpe = otimizacao_sharpe_manual(info_ativos)
                 investimento = pesos*capital
                 dict_pesos = {'Ativos': selecionadas, 'Pesos': pesos, 'Investimento (R$)': investimento}
                 col1,col2,col3 = st.columns(3)
