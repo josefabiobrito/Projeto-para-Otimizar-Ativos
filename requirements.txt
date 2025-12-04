@@ -7,4 +7,5 @@ numpy
 seaborn
 requests
 lxml
+webdriver-manager
 selenium
