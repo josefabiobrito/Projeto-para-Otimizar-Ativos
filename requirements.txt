@@ -4,6 +4,7 @@ pandas
 plotly
 matplotlib
 scipy
+sympy
 numpy
 seaborn
 requests
