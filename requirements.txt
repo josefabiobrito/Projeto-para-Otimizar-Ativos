@@ -3,6 +3,11 @@ yfinance
 pandas
 plotly
 matplotlib
+scipy
+sympy
 numpy
 seaborn
 requests
+lxml
+webdriver-manager
+selenium
