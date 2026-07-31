@@ -1,11 +1,14 @@
-{
-    "data_extracao": "2026-07-31T15:08:58.594424",
-    "qtde_registros": 50,
-    "tempo_execucao_s": 15.39,
-    "fonte": "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
-}{
-    "data_extracao": "2026-07-31T15:15:52.644368",
-    "qtde_registros": 50,
-    "tempo_execucao_s": 9.26,
-    "fonte": "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
-}
+[
+    {
+        "data_extracao": "2026-07-31T15:08:58.594424",
+        "qtde_registros": 50,
+        "tempo_execucao_s": 15.39,
+        "fonte": "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
+    },
+    {
+        "data_extracao": "2026-07-31T15:15:52.644368",
+        "qtde_registros": 50,
+        "tempo_execucao_s": 9.26,
+        "fonte": "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
+    }
+]
