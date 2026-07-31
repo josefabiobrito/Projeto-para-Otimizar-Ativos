@@ -10,6 +10,9 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.firefox.service import Service
 from webdriver_manager.firefox import GeckoDriverManager
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from webdriver_manager.chrome import ChromeDriverManager
 from io import StringIO
 import numpy as np
 import yfinance as yf
@@ -46,7 +49,7 @@ def precisa_atualizar():
     except:
         return True
 
-def extrair_ibxl_via_selenium():
+'''def extrair_ibxl_via_selenium():
     url = "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
     inicio = time.time()
 
@@ -93,6 +96,60 @@ def extrair_ibxl_via_selenium():
         tabela.to_csv(CSV_PATH, index=False, encoding="utf-8")
 
         # Salvar JSON de metadados
+        meta = {
+            "data_extracao": datetime.now().isoformat(),
+            "qtde_registros": len(tabela),
+            "tempo_execucao_s": tempo_exec,
+            "fonte": url,
+        }
+        with open(META_PATH, "w") as f:
+            json.dump(meta, f, indent=4)
+
+        return tabela
+
+    finally:
+        driver.quit()'''
+
+def extrair_ibxl_via_selenium():
+    url = "https://sistemaswebb3-listados.b3.com.br/indexPage/day/IBXL?language=pt-br"
+    inicio = time.time()
+
+    options = ChromeOptions()
+    options.add_argument("--headless=new")
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
+
+    try:
+        driver.get(url)
+
+        wait = WebDriverWait(driver, 10)
+
+        dropdown = wait.until(EC.visibility_of_element_located((By.ID, "selectPage")))
+        select = Select(dropdown)
+        select.select_by_visible_text("60")
+
+        time.sleep(4)
+
+        html_page = driver.page_source
+
+        tabela = pd.read_html(StringIO(html_page))[0][:-2]
+        mapa_colunas = {
+            "Código": "codigo",
+            "Ação": "acao",
+            "Tipo": "tipo",
+            "Qtde. Teórica": "qtde_teorica",
+            "Part. (%)": "part_teorica",
+            "Part. (%) IBr-X 50": "part_iberf",
+        }
+
+        tabela = tabela.rename(columns={orig: novo for orig, novo in mapa_colunas.items() if orig in tabela.columns})
+
+        tempo_exec = round(time.time() - inicio, 2)
+
+        os.makedirs(DIRETORIO, exist_ok=True)
+
+        tabela.to_csv(CSV_PATH, index=False, encoding="utf-8")
+
         meta = {
             "data_extracao": datetime.now().isoformat(),
             "qtde_registros": len(tabela),

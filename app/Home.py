@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from src.Dados import get_dados, get_metricas, obter_ibxl, obter_selic_atual
+from src.VaR import retorno_carteira,medidas_kD,VaR
 from src.Visualizacoes import graficoAcoes, graficoRetorno, graficoVolatilidade, graficoRAcumulado, plot_correlacao
 from src.BarreiraLogaritmicaPenalizacaoQuadratica import BarreiraLogaritmicaPenalizacaoQuadratica
 from src.Analitico import Analitico
@@ -153,6 +154,10 @@ def Home():
                 col3.metric(label = "Índice Sharpe Anualizado",
                             value = f'{sharpe:.3f}',
                             border = True)
+                muV,sigmaV,ret_kD = medidas_kD(retorno_carteira(metricas['retornos'],pesos))
+                resultado = VaR(muV,sigmaV,metricas['retornos'],ret_kD,pesos)
+                st.dataframe(resultado)
+                st.write("VaR da carteira selecionada")
                 st.dataframe(dict_pesos)
                 st.write("Distribuição de pesos:")
                 st.bar_chart(data=dict_pesos, x='Ativos', y='Pesos')
